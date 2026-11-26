@@ -1,0 +1,145 @@
+"""Typed error surface for pyjwtguard.
+
+Every failure raised by the library is a :class:`JwtGuardError` carrying a
+stable machine readable ``code`` attribute. Callers should branch on the code,
+never on the human readable message, so that wording can evolve without
+breaking integrations.
+"""
+
+from __future__ import annotations
+
+from typing import Tuple
+
+MALFORMED_TOKEN = "MALFORMED_TOKEN"
+TOKEN_TOO_LARGE = "TOKEN_TOO_LARGE"
+BASE64_INVALID = "BASE64_INVALID"
+BASE64_NONCANONICAL = "BASE64_NONCANONICAL"
+JSON_INVALID = "JSON_INVALID"
+JSON_DUPLICATE_KEY = "JSON_DUPLICATE_KEY"
+JSON_NONFINITE = "JSON_NONFINITE"
+HEADER_INVALID = "HEADER_INVALID"
+HEADER_FORBIDDEN = "HEADER_FORBIDDEN"
+CLAIMS_INVALID = "CLAIMS_INVALID"
+ALGORITHM_NONE = "ALGORITHM_NONE"
+ALGORITHM_NOT_ALLOWED = "ALGORITHM_NOT_ALLOWED"
+ALGORITHM_UNSUPPORTED = "ALGORITHM_UNSUPPORTED"
+KEY_INVALID = "KEY_INVALID"
+KEY_NOT_FOUND = "KEY_NOT_FOUND"
+WEAK_KEY = "WEAK_KEY"
+KEY_CONFUSION = "KEY_CONFUSION"
+SIGNATURE_INVALID = "SIGNATURE_INVALID"
+SIGNER_INVALID = "SIGNER_INVALID"
+VERIFIER_INVALID = "VERIFIER_INVALID"
+KID_INVALID = "KID_INVALID"
+CRIT_INVALID = "CRIT_INVALID"
+CRIT_UNKNOWN = "CRIT_UNKNOWN"
+CLAIM_MISSING = "CLAIM_MISSING"
+CLAIM_INVALID = "CLAIM_INVALID"
+TOKEN_EXPIRED = "TOKEN_EXPIRED"
+TOKEN_NOT_YET_VALID = "TOKEN_NOT_YET_VALID"
+TOKEN_ISSUED_IN_FUTURE = "TOKEN_ISSUED_IN_FUTURE"
+TOKEN_TOO_OLD = "TOKEN_TOO_OLD"
+ISSUER_MISMATCH = "ISSUER_MISMATCH"
+AUDIENCE_MISMATCH = "AUDIENCE_MISMATCH"
+SUBJECT_MISMATCH = "SUBJECT_MISMATCH"
+JWT_ID_MISMATCH = "JWT_ID_MISMATCH"
+TYPE_MISMATCH = "TYPE_MISMATCH"
+CONFIG_INVALID = "CONFIG_INVALID"
+
+ERROR_CODES: Tuple[str, ...] = (
+    MALFORMED_TOKEN,
+    TOKEN_TOO_LARGE,
+    BASE64_INVALID,
+    BASE64_NONCANONICAL,
+    JSON_INVALID,
+    JSON_DUPLICATE_KEY,
+    JSON_NONFINITE,
+    HEADER_INVALID,
+    HEADER_FORBIDDEN,
+    CLAIMS_INVALID,
+    ALGORITHM_NONE,
+    ALGORITHM_NOT_ALLOWED,
+    ALGORITHM_UNSUPPORTED,
+    KEY_INVALID,
+    KEY_NOT_FOUND,
+    WEAK_KEY,
+    KEY_CONFUSION,
+    SIGNATURE_INVALID,
+    SIGNER_INVALID,
+    VERIFIER_INVALID,
+    KID_INVALID,
+    CRIT_INVALID,
+    CRIT_UNKNOWN,
+    CLAIM_MISSING,
+    CLAIM_INVALID,
+    TOKEN_EXPIRED,
+    TOKEN_NOT_YET_VALID,
+    TOKEN_ISSUED_IN_FUTURE,
+    TOKEN_TOO_OLD,
+    ISSUER_MISMATCH,
+    AUDIENCE_MISMATCH,
+    SUBJECT_MISMATCH,
+    JWT_ID_MISMATCH,
+    TYPE_MISMATCH,
+    CONFIG_INVALID,
+)
+
+
+class JwtGuardError(Exception):
+    """Raised for every rejected token, key, or configuration.
+
+    Attributes:
+        code: stable uppercase identifier from :data:`ERROR_CODES`.
+        message: short explanation that never contains key material.
+    """
+
+    __slots__ = ("code", "message")
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__("{}: {}".format(code, message))
+
+    def __str__(self) -> str:
+        return "{}: {}".format(self.code, self.message)
+
+
+__all__ = [
+    "ALGORITHM_NONE",
+    "ALGORITHM_NOT_ALLOWED",
+    "ALGORITHM_UNSUPPORTED",
+    "AUDIENCE_MISMATCH",
+    "BASE64_INVALID",
+    "BASE64_NONCANONICAL",
+    "CLAIMS_INVALID",
+    "CLAIM_INVALID",
+    "CLAIM_MISSING",
+    "CONFIG_INVALID",
+    "CRIT_INVALID",
+    "CRIT_UNKNOWN",
+    "ERROR_CODES",
+    "HEADER_FORBIDDEN",
+    "HEADER_INVALID",
+    "ISSUER_MISMATCH",
+    "JSON_DUPLICATE_KEY",
+    "JSON_INVALID",
+    "JSON_NONFINITE",
+    "JWT_ID_MISMATCH",
+    "KEY_CONFUSION",
+    "KEY_INVALID",
+    "KEY_NOT_FOUND",
+    "KID_INVALID",
+    "JwtGuardError",
+    "MALFORMED_TOKEN",
+    "SIGNATURE_INVALID",
+    "SIGNER_INVALID",
+    "SUBJECT_MISMATCH",
+    "TOKEN_EXPIRED",
+    "TOKEN_ISSUED_IN_FUTURE",
+    "TOKEN_NOT_YET_VALID",
+    "TOKEN_TOO_LARGE",
+    "TOKEN_TOO_OLD",
+    "TYPE_MISMATCH",
+    "VERIFIER_INVALID",
+    "WEAK_KEY",
+]
