@@ -67,7 +67,7 @@ class WorkflowTests(unittest.TestCase):
     def test_publish_uses_oidc_trusted_publishing_permission(self):
         text = read(".github/workflows/publish.yml")
         self.assertIn("id-token: write", text)
-        self.assertIn("pypa/gh-action-pypi-publish@release/v1", text)
+        self.assertRegex(text, r"pypa/gh-action-pypi-publish@[0-9a-f]{40}\b")
 
     def test_publish_workflow_targets_pypi_environment(self):
         text = read(".github/workflows/publish.yml")
