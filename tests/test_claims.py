@@ -143,6 +143,83 @@ for _claim in ("exp", "nbf", "iat"):
         )
 
 
+class NumericDateBoundaryTests(GuardTestCase):
+    def test_exp_exact_maximum_passes_before_expiration(self):
+        token = token_with({"exp": MAX_NUMERIC_DATE, "nbf": NOW - 10, "iat": NOW})
+        claims = verify(token, now=NOW)
+        self.assertEqual(MAX_NUMERIC_DATE, claims["exp"])
+
+    def test_exp_exact_maximum_at_clock_is_expired_not_invalid(self):
+        token = token_with(
+            {"exp": MAX_NUMERIC_DATE, "nbf": MAX_NUMERIC_DATE, "iat": MAX_NUMERIC_DATE}
+        )
+        self.assertVerifyCode("TOKEN_EXPIRED", token, now=MAX_NUMERIC_DATE)
+
+    def test_exp_exact_minimum_passes_with_earlier_clock(self):
+        token = token_with({"exp": MIN_NUMERIC_DATE, "nbf": MIN_NUMERIC_DATE, "iat": MIN_NUMERIC_DATE})
+        claims = verify(token, now=MIN_NUMERIC_DATE, leeway=1)
+        self.assertEqual(MIN_NUMERIC_DATE, claims["exp"])
+
+    def test_exp_exact_minimum_at_clock_is_expired_not_invalid(self):
+        token = token_with({"exp": MIN_NUMERIC_DATE, "nbf": MIN_NUMERIC_DATE, "iat": MIN_NUMERIC_DATE})
+        self.assertVerifyCode("TOKEN_EXPIRED", token, now=MIN_NUMERIC_DATE)
+
+    def test_nbf_exact_minimum_passes(self):
+        token = token_with({"nbf": MIN_NUMERIC_DATE})
+        claims = verify(token, now=NOW)
+        self.assertEqual(MIN_NUMERIC_DATE, claims["nbf"])
+
+    def test_nbf_exact_maximum_passes_at_maximum_clock(self):
+        payload = claims_payload(nbf=MAX_NUMERIC_DATE, iat=MAX_NUMERIC_DATE)
+        del payload["exp"]
+        claims = verify(manual_token(payload=payload), now=MAX_NUMERIC_DATE, require_exp=False)
+        self.assertEqual(MAX_NUMERIC_DATE, claims["nbf"])
+
+    def test_nbf_exact_maximum_before_clock_is_not_yet_valid_not_invalid(self):
+        token = token_with({"exp": MAX_NUMERIC_DATE, "nbf": MAX_NUMERIC_DATE})
+        self.assertVerifyCode("TOKEN_NOT_YET_VALID", token, now=NOW)
+
+    def test_iat_exact_minimum_passes(self):
+        token = token_with({"iat": MIN_NUMERIC_DATE})
+        claims = verify(token, now=NOW)
+        self.assertEqual(MIN_NUMERIC_DATE, claims["iat"])
+
+    def test_iat_exact_maximum_passes_at_maximum_clock(self):
+        payload = claims_payload(nbf=MAX_NUMERIC_DATE, iat=MAX_NUMERIC_DATE)
+        del payload["exp"]
+        claims = verify(manual_token(payload=payload), now=MAX_NUMERIC_DATE, require_exp=False)
+        self.assertEqual(MAX_NUMERIC_DATE, claims["iat"])
+
+    def test_iat_exact_maximum_before_clock_is_future_not_invalid(self):
+        token = token_with({"exp": MAX_NUMERIC_DATE, "iat": MAX_NUMERIC_DATE})
+        self.assertVerifyCode("TOKEN_ISSUED_IN_FUTURE", token, now=NOW)
+
+    def test_signing_accepts_exact_minimum_and_maximum_numeric_dates(self):
+        min_token = sign_jwt(
+            {"exp": MIN_NUMERIC_DATE, "nbf": MIN_NUMERIC_DATE, "iat": MIN_NUMERIC_DATE},
+            HS256_SECRET,
+        )
+        min_claims = verify(min_token, now=MIN_NUMERIC_DATE, leeway=1)
+        self.assertEqual(MIN_NUMERIC_DATE, min_claims["exp"])
+        self.assertEqual(MIN_NUMERIC_DATE, min_claims["nbf"])
+        self.assertEqual(MIN_NUMERIC_DATE, min_claims["iat"])
+
+        max_token = sign_jwt(
+            {"exp": MAX_NUMERIC_DATE, "nbf": MAX_NUMERIC_DATE, "iat": MAX_NUMERIC_DATE},
+            HS256_SECRET,
+        )
+        max_claims = verify(max_token, now=MAX_NUMERIC_DATE, leeway=1)
+        self.assertEqual(MAX_NUMERIC_DATE, max_claims["exp"])
+        self.assertEqual(MAX_NUMERIC_DATE, max_claims["nbf"])
+        self.assertEqual(MAX_NUMERIC_DATE, max_claims["iat"])
+
+    def test_signing_rejects_just_outside_numeric_date_bounds(self):
+        for claim in ("exp", "nbf", "iat"):
+            for boundary in (MIN_NUMERIC_DATE - 1, MAX_NUMERIC_DATE + 1):
+                with self.subTest(claim=claim, boundary=boundary):
+                    self.assertCode("CLAIM_INVALID", sign_jwt, {claim: boundary}, HS256_SECRET)
+
+
 class TemporalConfigurationTests(GuardTestCase):
     pass
 
