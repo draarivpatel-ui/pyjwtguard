@@ -18,6 +18,8 @@ from typing import Any, Dict, List, Tuple
 
 from .errors import JSON_DUPLICATE_KEY, JSON_INVALID, JSON_NONFINITE, JwtGuardError
 
+MAX_JSON_DEPTH = 128
+
 
 def _reject_duplicate_keys(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
@@ -40,13 +42,13 @@ def validate_json_tree(value: Any, *, invalid_code: str, nonfinite_code: str, co
     """Validate JSON shaped data without recursive descent.
 
     The walk rejects non-finite numbers, lone surrogate code points, non-string
-    object keys at every nesting level, and circular containers. It is iterative
-    so hostile nesting cannot consume the Python call stack before the parser's
-    own depth guard runs.
+    object keys at every nesting level, circular containers, and nesting beyond
+    the explicit depth cap. Heights are computed iteratively so hostile nesting
+    cannot consume the Python call stack before validation completes.
     """
     stack = [(value, False)]
     active = set()
-    completed = set()
+    heights = {}
     while stack:
         item, closing = stack.pop()
         is_container = isinstance(item, (dict, list, tuple))
@@ -59,11 +61,19 @@ def validate_json_tree(value: Any, *, invalid_code: str, nonfinite_code: str, co
         marker = id(item)
         if closing:
             active.discard(marker)
-            completed.add(marker)
+            children = item.values() if isinstance(item, dict) else item
+            child_height = 0
+            for child in children:
+                if isinstance(child, (dict, list, tuple)):
+                    child_height = max(child_height, heights[id(child)])
+            height = child_height + 1
+            if height > MAX_JSON_DEPTH:
+                raise JwtGuardError(invalid_code, "{} is nested too deeply".format(context))
+            heights[marker] = height
             continue
         if marker in active:
             raise JwtGuardError(invalid_code, "{} contains a circular reference".format(context))
-        if marker in completed:
+        if marker in heights:
             continue
         active.add(marker)
         stack.append((item, True))
@@ -80,6 +90,29 @@ def validate_json_tree(value: Any, *, invalid_code: str, nonfinite_code: str, co
     return None
 
 
+def _reject_excessive_json_nesting(text: str, context: str) -> None:
+    depth = 0
+    in_string = False
+    escaped = False
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{" or char == "[":
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise JwtGuardError(JSON_INVALID, "{} is nested too deeply".format(context))
+        elif char == "}" or char == "]":
+            depth = max(0, depth - 1)
+
+
 def reject_nonfinite(value: Any, *, code: str, context: str) -> None:
     """Walk a JSON shaped value and reject every non-finite float."""
     validate_json_tree(value, invalid_code=code, nonfinite_code=code, context=context)
@@ -91,6 +124,7 @@ def parse_json_object(raw: bytes, *, code: str, context: str) -> Dict[str, Any]:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise JwtGuardError(JSON_INVALID, "{} is not valid UTF-8".format(context)) from exc
+    _reject_excessive_json_nesting(text, context)
     try:
         value = json.loads(
             text,

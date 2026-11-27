@@ -14,7 +14,7 @@ The built-in cryptographic implementation is intentionally narrow: constant-time
 - PEM armored keys, certificates, and certificate requests, OpenSSH public keys in text, wire, or encoded wire form, asymmetric JWKs, common DER key and certificate encodings, and base64 or hex encoded forms of that DER material are rejected when passed as HMAC secrets. This blocks the classic RS256 to HS256 public-key confusion attack.
 - `HmacKey` binds key material to exactly one algorithm, following the RFC 8725 rule that each key must be used with exactly one algorithm.
 - Key rotation uses validated `kid` lookup through a keyring or resolver. Path separators, traversal, control characters, SQL metacharacters, encoded traversal, invisible formatting characters, and overlong identifiers are rejected.
-- JSON parsing rejects duplicate keys at every nesting level, including keys hidden behind Unicode escapes.
+- JSON parsing rejects duplicate keys at every nesting level, including keys hidden behind Unicode escapes, and rejects input nested deeper than 128 containers before interpreter recursion behavior can differ by Python version.
 - Base64url must be canonical unpadded base64url. Padding, whitespace, the standard base64 alphabet, impossible lengths, and non-zero trailing pad bits are rejected.
 - Embedded key and remote key headers `jwk`, `jku`, `x5u`, and `x5c` are rejected by default. pyjwtguard never fetches them.
 - `crit` cannot name registered headers, duplicates, missing headers, or unknown critical extensions. Callers must explicitly declare understood private extensions.
@@ -185,7 +185,7 @@ Branch on `exc.code`, not the human-readable message. The complete stable list i
 
 ## Test evidence and development
 
-The offline unittest suite currently contains 640 real tests covering RFC 7515 vectors, RFC 7797 shapes, RFC 8725 best practices, algorithm confusion, key rotation, duplicate-key parser differentials, base64url malleability, critical headers, strict claims, providers, inspection, and CLI behavior. All 640 tests passed in the local verification run for this commit.
+The offline unittest suite currently contains 644 real tests covering RFC 7515 vectors, RFC 7797 shapes, RFC 8725 best practices, algorithm confusion, key rotation, duplicate-key parser differentials, base64url malleability, critical headers, strict claims, providers, inspection, and CLI behavior. All 644 tests passed in the local verification run for this commit.
 
 Run the suite with:
 

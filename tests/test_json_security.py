@@ -3,6 +3,7 @@
 import unittest
 
 from pyjwtguard import decode_unverified, sign_jwt
+from pyjwtguard.jsonparse import MAX_JSON_DEPTH
 
 from _support import GuardTestCase, HS256_SECRET, NOW, b64, json_segment, manual_token, sign_segments, verify
 
@@ -13,6 +14,13 @@ def token_with_raw_segments(header_text, payload_text):
 
 def valid_header_segment():
     return b64(b'{"alg":"HS256"}')
+
+
+def nested_arrays(depth):
+    nested = "1"
+    for _ in range(depth):
+        nested = "[" + nested + "]"
+    return nested
 
 
 class DuplicateJsonKeyTests(GuardTestCase):
@@ -182,6 +190,20 @@ class Utf8AndDepthTests(GuardTestCase):
         token = sign_segments(b64('{"alg":"HS256","deep":' + nested + '}'), b64('{"exp":1700000300}'), HS256_SECRET, "HS256")
         self.assertVerifyCode("JSON_INVALID", token)
 
+    def test_payload_json_at_depth_cap_is_accepted(self):
+        token = token_with_raw_segments(
+            '{"alg":"HS256"}',
+            '{"exp":1700000300,"deep":' + nested_arrays(MAX_JSON_DEPTH - 1) + '}',
+        )
+        self.assertIn("deep", verify(token))
+
+    def test_payload_json_one_past_depth_cap_is_rejected(self):
+        token = token_with_raw_segments(
+            '{"alg":"HS256"}',
+            '{"exp":1700000300,"deep":' + nested_arrays(MAX_JSON_DEPTH) + '}',
+        )
+        self.assertVerifyCode("JSON_INVALID", token)
+
 
 class JsonExactnessTests(GuardTestCase):
     def test_issuer_comparison_does_not_normalize_unicode(self):
@@ -234,6 +256,23 @@ class JsonExactnessTests(GuardTestCase):
         claims = {}
         current = claims
         for _ in range(1200):
+            current["nested"] = {}
+            current = current["nested"]
+        self.assertCode("CLAIM_INVALID", sign_jwt, claims, HS256_SECRET)
+
+    def test_signing_accepts_claims_at_depth_cap(self):
+        claims = {"exp": NOW + 300}
+        current = claims
+        for _ in range(MAX_JSON_DEPTH - 1):
+            current["nested"] = {}
+            current = current["nested"]
+        token = sign_jwt(claims, HS256_SECRET)
+        self.assertIn("nested", decode_unverified(token).claims)
+
+    def test_signing_rejects_claims_one_past_depth_cap(self):
+        claims = {"exp": NOW + 300}
+        current = claims
+        for _ in range(MAX_JSON_DEPTH):
             current["nested"] = {}
             current = current["nested"]
         self.assertCode("CLAIM_INVALID", sign_jwt, claims, HS256_SECRET)
