@@ -6,7 +6,7 @@ Version 1.x receives security fixes.
 
 ## Reporting a vulnerability
 
-Please use GitHub's private security advisory form on the repository. Do not open a public issue for an undisclosed vulnerability.
+Please use the GitHub Security Advisories form at <https://github.com/draarivpatel-ui/pyjwtguard/security/advisories/new>. Do not open a public issue for an undisclosed vulnerability.
 
 Include the affected version, a minimal token or code reproduction, the expected behavior, and the observed behavior. Do not include real secrets, private keys, production tokens, or personal data. Reports are acknowledged within seven days. Fixes are released as patch versions with a changelog entry.
 
