@@ -137,9 +137,66 @@ def pkcs8_private_der(oid_hex="2a864886f70d010101"):
     return der_tlv(0x30, version + algorithm + private)
 
 
+def sec1_ec_private_der():
+    version = der_tlv(0x02, b"\x01")
+    private = der_tlv(0x04, bytes(range(32)))
+    curve_oid = der_tlv(0x06, bytes.fromhex("2a8648ce3d030107"))
+    parameters = der_tlv(0xA0, curve_oid)
+    public_point = der_tlv(0x03, b"\x00\x04" + bytes(range(1, 65)))
+    public = der_tlv(0xA1, public_point)
+    return der_tlv(0x30, version + private + parameters + public)
+
+
+def der_name():
+    common_name_oid = der_tlv(0x06, bytes.fromhex("550403"))
+    attribute = der_tlv(0x30, common_name_oid + der_tlv(0x13, b"example"))
+    return der_tlv(0x30, der_tlv(0x31, attribute))
+
+
+def der_validity():
+    return der_tlv(0x30, der_tlv(0x17, b"260101000000Z") + der_tlv(0x17, b"270101000000Z"))
+
+
+def der_signature_algorithm():
+    oid = der_tlv(0x06, bytes.fromhex("2a864886f70d01010b"))
+    return der_tlv(0x30, oid + der_tlv(0x05, b""))
+
+
+def x509_certificate_der():
+    version = der_tlv(0xA0, der_tlv(0x02, b"\x02"))
+    serial = der_tlv(0x02, b"\x01")
+    name = der_name()
+    tbs = der_tlv(
+        0x30,
+        version
+        + serial
+        + der_signature_algorithm()
+        + name
+        + der_validity()
+        + name
+        + spki_der("2a864886f70d010101"),
+    )
+    signature = der_tlv(0x03, b"\x00" + bytes(range(64)))
+    return der_tlv(0x30, tbs + der_signature_algorithm() + signature)
+
+
+def x509_csr_der():
+    version = der_tlv(0x02, b"\x00")
+    attributes = der_tlv(0xA0, b"")
+    info = der_tlv(
+        0x30,
+        version + der_name() + spki_der("2a864886f70d010101") + attributes,
+    )
+    signature = der_tlv(0x03, b"\x00" + bytes(range(64)))
+    return der_tlv(0x30, info + der_signature_algorithm() + signature)
+
+
 RSA_SPKI_DER = spki_der("2a864886f70d010101")
 EC_SPKI_DER = spki_der("2a8648ce3d0201")
 ED25519_SPKI_DER = spki_der("2b6570")
 RSA_PKCS1_DER = pkcs1_rsa_public_der()
 RSA_PKCS1_PRIVATE_DER = pkcs1_rsa_private_der()
 RSA_PKCS8_DER = pkcs8_private_der()
+SEC1_EC_PRIVATE_DER = sec1_ec_private_der()
+X509_CERTIFICATE_DER = x509_certificate_der()
+X509_CSR_DER = x509_csr_der()

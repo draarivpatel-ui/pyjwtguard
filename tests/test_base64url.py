@@ -130,6 +130,26 @@ class TokenStructureTests(GuardTestCase):
         token = manual_token(payload={"exp": NOW + 300, "pad": "x" * 300})
         self.assertVerifyCode("TOKEN_TOO_LARGE", token, max_token_size=80)
 
+    def test_character_oversized_token_is_rejected_before_utf8_copy(self):
+        encode_calls = []
+
+        class CountingString(str):
+            def encode(self, *args, **kwargs):
+                encode_calls.append(True)
+                return super().encode(*args, **kwargs)
+
+        token = CountingString("x" * 32)
+        self.assertCode(
+            "TOKEN_TOO_LARGE",
+            verify_jwt,
+            token,
+            HS256_SECRET,
+            algorithms=["HS256"],
+            now=NOW,
+            max_token_size=8,
+        )
+        self.assertEqual([], encode_calls)
+
     def test_max_token_size_must_be_integer(self):
         self.assertVerifyCode("CONFIG_INVALID", manual_token(), max_token_size="8192")
 

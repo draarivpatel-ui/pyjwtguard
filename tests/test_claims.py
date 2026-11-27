@@ -422,6 +422,21 @@ class RequiredClaimsTests(GuardTestCase):
     def test_custom_required_claim_fails_closed_when_missing(self):
         self.assertVerifyCode("CLAIM_MISSING", token_with({}), required_claims=["scope"])
 
+    def test_required_claim_rejects_none_and_empty_values(self):
+        for value in (None, "", [], {}):
+            with self.subTest(value=value):
+                self.assertVerifyCode(
+                    "CLAIM_INVALID",
+                    token_with({"tenant": value}),
+                    required_claims=["tenant"],
+                )
+
+    def test_required_claim_accepts_false_zero_and_nonempty_values(self):
+        for value in (False, 0, "tenant-a", ["tenant-a"], {"id": "tenant-a"}):
+            with self.subTest(value=value):
+                claims = verify(token_with({"tenant": value}), required_claims=["tenant"])
+                self.assertEqual(value, claims["tenant"])
+
     def test_required_claims_can_require_registered_claims(self):
         payload = claims_payload()
         del payload["sub"]

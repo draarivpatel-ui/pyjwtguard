@@ -11,7 +11,7 @@ The built-in cryptographic implementation is intentionally narrow: constant-time
 - HMAC verification uses `hmac.compare_digest`.
 - HMAC secrets must meet minimum lengths of 32, 48, and 64 bytes for HS256, HS384, and HS512.
 - HMAC secrets also pass a conservative Shannon entropy screen of 128, 192, and 256 estimated bits. `allow_weak_keys=True` is an explicit legacy or test opt-out and never disables key-confusion detection.
-- PEM, certificate, OpenSSH, asymmetric JWK, and common DER key encodings are rejected when passed as HMAC secrets. This blocks the classic RS256 to HS256 public-key confusion attack.
+- PEM armored keys, certificates, and certificate requests, OpenSSH public keys in text, wire, or encoded wire form, asymmetric JWKs, common DER key and certificate encodings, and base64 or hex encoded forms of that DER material are rejected when passed as HMAC secrets. This blocks the classic RS256 to HS256 public-key confusion attack.
 - `HmacKey` binds key material to exactly one algorithm, following the RFC 8725 rule that each key must be used with exactly one algorithm.
 - Key rotation uses validated `kid` lookup through a keyring or resolver. Path separators, traversal, control characters, SQL metacharacters, encoded traversal, invisible formatting characters, and overlong identifiers are rejected.
 - JSON parsing rejects duplicate keys at every nesting level, including keys hidden behind Unicode escapes.
@@ -21,7 +21,7 @@ The built-in cryptographic implementation is intentionally narrow: constant-time
 - `b64: false` is rejected unless explicitly enabled. It is only for closed JWS profiles because RFC 7797 says JWTs must not use it.
 - Tokens are size capped before decoding. The default cap is 8192 bytes.
 - Claims are parsed only after signature verification succeeds.
-- `exp`, `nbf`, `iat`, `iss`, `aud`, `sub`, `jti`, required claims, explicit type, and `max_age` are strictly validated. `max_age` fails closed when `iat` is absent.
+- `exp`, `nbf`, `iat`, `iss`, `aud`, `sub`, `jti`, required claims, explicit type, and `max_age` are strictly validated. Required claims must also be non-null and non-empty when they are strings, arrays, or objects. `max_age` fails closed when `iat` is absent.
 - Numeric dates reject booleans, strings, non-finite values, and integers outside the supported year 1 to year 9999 timestamp range.
 - Every failure is a `JwtGuardError` with a stable machine-readable `code`.
 
@@ -185,7 +185,7 @@ Branch on `exc.code`, not the human-readable message. The complete stable list i
 
 ## Test evidence and development
 
-The offline unittest suite currently contains 611 real tests covering RFC 7515 vectors, RFC 7797 shapes, RFC 8725 best practices, algorithm confusion, key rotation, duplicate-key parser differentials, base64url malleability, critical headers, strict claims, providers, inspection, and CLI behavior. All 611 tests passed in the local verification run for this commit.
+The offline unittest suite currently contains 640 real tests covering RFC 7515 vectors, RFC 7797 shapes, RFC 8725 best practices, algorithm confusion, key rotation, duplicate-key parser differentials, base64url malleability, critical headers, strict claims, providers, inspection, and CLI behavior. All 640 tests passed in the local verification run for this commit.
 
 Run the suite with:
 
