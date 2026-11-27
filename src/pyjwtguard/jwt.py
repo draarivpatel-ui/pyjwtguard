@@ -453,6 +453,8 @@ def _validate_header(
 def _split_token(token: Any, max_token_size: int) -> Tuple[str, str, str]:
     if not isinstance(token, str):
         raise JwtGuardError(MALFORMED_TOKEN, "token must be text")
+    if len(token) > max_token_size:
+        raise JwtGuardError(TOKEN_TOO_LARGE, "token exceeds the configured size limit")
     try:
         encoded_size = len(token.encode("utf-8"))
     except UnicodeEncodeError as exc:
@@ -579,6 +581,11 @@ def _validate_claims(
     for name in required_claims:
         if name not in claims:
             raise JwtGuardError(CLAIM_MISSING, "{} claim is required".format(name))
+        required_value = claims[name]
+        if required_value is None or (
+            isinstance(required_value, (str, list, dict)) and not required_value
+        ):
+            raise JwtGuardError(CLAIM_INVALID, "{} claim must not be null or empty".format(name))
     if require_exp and "exp" not in claims:
         raise JwtGuardError(CLAIM_MISSING, "exp claim is required")
     if require_iat and "iat" not in claims:

@@ -1,5 +1,7 @@
 """HMAC key strength, key confusion, and signature primitive tests."""
 
+import base64
+import struct
 import unittest
 
 from pyjwtguard import HmacKey, sign_jwt
@@ -15,6 +17,9 @@ from _support import (
     RSA_PKCS1_PRIVATE_DER,
     RSA_PKCS8_DER,
     RSA_SPKI_DER,
+    SEC1_EC_PRIVATE_DER,
+    X509_CERTIFICATE_DER,
+    X509_CSR_DER,
     manual_token,
     pem_private_key,
     pem_public_key,
@@ -157,6 +162,10 @@ _PEM_CASES = [
     ("ec_private_key", pem_public_key("EC PRIVATE KEY")),
     ("openssh_private_key", pem_public_key("OPENSSH PRIVATE KEY")),
     ("certificate", pem_public_key("CERTIFICATE")),
+    ("trusted_certificate", pem_public_key("TRUSTED CERTIFICATE")),
+    ("x509_certificate", pem_public_key("X509 CERTIFICATE")),
+    ("certificate_request", pem_public_key("CERTIFICATE REQUEST")),
+    ("new_certificate_request", pem_public_key("NEW CERTIFICATE REQUEST")),
     ("lowercase_marker", pem_public_key().lower()),
 ]
 
@@ -167,16 +176,43 @@ _DER_CASES = [
     ("rsa_pkcs1", RSA_PKCS1_DER),
     ("rsa_pkcs1_private", RSA_PKCS1_PRIVATE_DER),
     ("rsa_pkcs8", RSA_PKCS8_DER),
+    ("sec1_ec_private", SEC1_EC_PRIVATE_DER),
+    ("x509_certificate", X509_CERTIFICATE_DER),
+    ("x509_certificate_trailing_whitespace", X509_CERTIFICATE_DER + b"\r\n"),
+    ("x509_csr", X509_CSR_DER),
+]
+
+_ENCODED_DER_CASES = [
+    ("base64_standard", base64.b64encode(RSA_SPKI_DER)),
+    ("base64_urlsafe_unpadded", base64.urlsafe_b64encode(X509_CERTIFICATE_DER).rstrip(b"=")),
+    ("hexadecimal", SEC1_EC_PRIVATE_DER.hex().encode("ascii")),
+]
+
+_SSH_WIRE_CASES = [
+    ("rsa", struct.pack(">I", 7) + b"ssh-rsa" + b"\x00" * 64),
+    ("ed25519", struct.pack(">I", 11) + b"ssh-ed25519" + b"\x00" * 32),
+]
+
+_ENCODED_SSH_WIRE_CASES = [
+    ("base64_rsa", base64.b64encode(_SSH_WIRE_CASES[0][1])),
+    ("hex_rsa", _SSH_WIRE_CASES[0][1].hex().encode("ascii")),
 ]
 
 _TEXT_KEY_CASES = [
     ("jwk_rsa", '{"kty":"RSA","n":"abc","e":"AQAB"}' + "x" * 32),
+    ("jwk_utf8_bom", '\ufeff{"kty":"RSA","n":"abc","e":"AQAB"}' + "x" * 32),
     ("jwk_spaced_kty_invalid_json", '{"kty" : "RSA", "n":"abc"}' + "x" * 32),
     ("jwk_ec", '{"kty":"EC","crv":"P-256","x":"abc","y":"def"}' + "x" * 32),
     ("jwk_okp", '{"kty":"OKP","crv":"Ed25519","x":"abc"}' + "x" * 32),
     ("openssh_rsa", "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ" + "x" * 32),
+    ("openssh_dss", "ssh-dss AAAAB3NzaC1kc3MAAACB" + "x" * 32),
+    ("openssh_rsa_sha2", "rsa-sha2-256 AAAAB3NzaC1yc2EAAAADAQABAAABAQ" + "x" * 32),
     ("openssh_ed25519", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI" + "x" * 32),
     ("openssh_ecdsa", "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY" + "x" * 32),
+    ("openssh_fido_ed25519", "sk-ssh-ed25519@openssh.com AAAA" + "x" * 32),
+    ("openssh_fido_ecdsa", "sk-ecdsa-sha2-nistp256@openssh.com AAAA" + "x" * 32),
+    ("openssh_authorized_key_options", 'command="echo example",no-pty ssh-rsa AAAAB3NzaC1yc2E' + "x" * 32),
+    ("openssh_after_comment_line", "# generated key\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5" + "x" * 32),
 ]
 
 
@@ -190,6 +226,12 @@ for _name, _material in _PEM_CASES:
     setattr(AsymmetricKeyConfusionTests, "test_pem_{}_is_rejected".format(_name), _make_confusion_test("pem", _material))
 for _name, _material in _DER_CASES:
     setattr(AsymmetricKeyConfusionTests, "test_der_{}_is_rejected".format(_name), _make_confusion_test("der", _material))
+for _name, _material in _ENCODED_DER_CASES:
+    setattr(AsymmetricKeyConfusionTests, "test_encoded_der_{}_is_rejected".format(_name), _make_confusion_test("encoded", _material))
+for _name, _material in _SSH_WIRE_CASES:
+    setattr(AsymmetricKeyConfusionTests, "test_openssh_wire_{}_is_rejected".format(_name), _make_confusion_test("wire", _material))
+for _name, _material in _ENCODED_SSH_WIRE_CASES:
+    setattr(AsymmetricKeyConfusionTests, "test_encoded_openssh_wire_{}_is_rejected".format(_name), _make_confusion_test("encoded_wire", _material))
 for _name, _material in _TEXT_KEY_CASES:
     setattr(AsymmetricKeyConfusionTests, "test_text_{}_is_rejected".format(_name), _make_confusion_test("text", _material))
 
@@ -204,10 +246,26 @@ class KeyConfusionIntegrationTests(GuardTestCase):
         forged = manual_token(secret=RSA_SPKI_DER)
         self.assertVerifyCode("KEY_CONFUSION", forged, RSA_SPKI_DER)
 
+    def test_x509_certificate_cannot_verify_forged_hs256_token(self):
+        forged = manual_token(secret=X509_CERTIFICATE_DER)
+        self.assertVerifyCode("KEY_CONFUSION", forged, X509_CERTIFICATE_DER, allow_weak_keys=True)
+
+    def test_sec1_ec_private_key_cannot_verify_forged_hs256_token(self):
+        forged = manual_token(secret=SEC1_EC_PRIVATE_DER)
+        self.assertVerifyCode("KEY_CONFUSION", forged, SEC1_EC_PRIVATE_DER, allow_weak_keys=True)
+
     def test_normal_binary_secret_starting_with_sequence_tag_is_accepted(self):
         secret = b"\x30" + bytes(range(1, 32))
         token = manual_token(secret=secret)
         self.assertEqual(NOW + 300, verify(token, secret)["exp"])
+
+    def test_normal_hex_secret_is_not_mistaken_for_encoded_key_material(self):
+        secret = HS256_SECRET.encode("ascii")
+        self.assertEqual(secret, validate_hmac_key(secret, "HS256", allow_weak_keys=True))
+
+    def test_normal_base64_secret_is_not_mistaken_for_encoded_key_material(self):
+        secret = base64.urlsafe_b64encode(bytes(range(32))).rstrip(b"=")
+        self.assertEqual(secret, validate_hmac_key(secret, "HS256", allow_weak_keys=True))
 
     def test_hmac_key_wrong_algorithm_binding_is_rejected(self):
         wrong = HmacKey(strong_secret("HS384"), "HS384")

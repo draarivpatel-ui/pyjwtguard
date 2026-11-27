@@ -10,6 +10,7 @@ HMAC verifier must fail loudly instead of validating an attacker forged token.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -30,14 +31,37 @@ from .errors import (
 )
 
 _PEM_MARKER = re.compile(
-    rb"-----BEGIN (?:[A-Z0-9 ]{0,64}KEY|CERTIFICATE)-----",
+    rb"-----BEGIN [A-Z0-9][A-Z0-9 -]{0,79}-----",
     re.IGNORECASE,
 )
-_SSH_KEY_PREFIXES = (
-    b"ssh-rsa",
-    b"ssh-ed25519",
-    b"ecdsa-sha2-",
+_SSH_PUBLIC_KEY_TYPES = frozenset(
+    (
+        b"ssh-rsa",
+        b"ssh-dss",
+        b"rsa-sha2-256",
+        b"rsa-sha2-512",
+        b"ssh-ed25519",
+        b"ecdsa-sha2-nistp256",
+        b"ecdsa-sha2-nistp384",
+        b"ecdsa-sha2-nistp521",
+        b"sk-ssh-ed25519@openssh.com",
+        b"sk-ecdsa-sha2-nistp256@openssh.com",
+        b"ssh-rsa-cert-v01@openssh.com",
+        b"rsa-sha2-256-cert-v01@openssh.com",
+        b"rsa-sha2-512-cert-v01@openssh.com",
+        b"ssh-dss-cert-v01@openssh.com",
+        b"ssh-ed25519-cert-v01@openssh.com",
+        b"ecdsa-sha2-nistp256-cert-v01@openssh.com",
+        b"ecdsa-sha2-nistp384-cert-v01@openssh.com",
+        b"ecdsa-sha2-nistp521-cert-v01@openssh.com",
+        b"sk-ssh-ed25519-cert-v01@openssh.com",
+        b"sk-ecdsa-sha2-nistp256-cert-v01@openssh.com",
+    )
 )
+_SSH_TOKEN_EDGE_CHARS = b"'\"`;,[](){}"
+_BASE64_KEY_CANDIDATE = re.compile(rb"[A-Za-z0-9+/_-]+={0,2}")
+_HEX_KEY_CANDIDATE = re.compile(rb"[0-9a-fA-F]+")
+_MAX_ENCODED_KEY_CANDIDATE_BYTES = 8192
 _ASYMMETRIC_JWK_TYPES = (b'"rsa"', b'"ec"', b'"okp"')
 
 _OID_RSA = bytes.fromhex("2a864886f70d010101")
@@ -186,12 +210,138 @@ def _looks_like_pkcs1_rsa(data: bytes) -> bool:
         return False
 
 
+def _looks_like_sec1_ec_private_key(data: bytes) -> bool:
+    if len(data) < 40 or data[0] != 0x30:
+        return False
+    try:
+        outer = _read_tlv(data, 0, len(data))
+        if outer[0] != 0x30 or outer[3] != len(data):
+            return False
+        children = _sequence_children(data, outer[1], outer[2])
+        if len(children) < 2 or len(children) > 4:
+            return False
+        if children[0][0] != 0x02 or children[1][0] != 0x04:
+            return False
+        if _integer_content(data, children[0]) != b"\x01":
+            return False
+        private_key_size = children[1][2] - children[1][1]
+        if private_key_size < 16 or private_key_size > 128:
+            return False
+        return all(child[0] in (0xA0, 0xA1) for child in children[2:])
+    except (IndexError, ValueError):
+        return False
+
+
+def _sequence_contains_spki(data: bytes, sequence: Tuple[int, int, int, int], depth: int) -> bool:
+    if depth > 8 or sequence[0] != 0x30:
+        return False
+    try:
+        children = _sequence_children(data, sequence[1], sequence[2])
+    except ValueError:
+        return False
+    for child in children:
+        if child[0] != 0x30:
+            continue
+        try:
+            grandchildren = _sequence_children(data, child[1], child[2])
+        except ValueError:
+            grandchildren = ()
+        if (
+            len(grandchildren) == 2
+            and grandchildren[0][0] == 0x30
+            and grandchildren[1][0] == 0x03
+        ):
+            try:
+                oid = _first_oid_in_sequence(data, grandchildren[0])
+            except ValueError:
+                oid = b""
+            if oid in _KEY_OIDS:
+                return True
+        if _sequence_contains_spki(data, child, depth + 1):
+            return True
+    return False
+
+
+def _looks_like_x509_or_csr(data: bytes) -> bool:
+    if len(data) < 32 or data[0] != 0x30:
+        return False
+    try:
+        outer = _read_tlv(data, 0, len(data))
+        if outer[0] != 0x30 or outer[3] != len(data):
+            return False
+        children = _sequence_children(data, outer[1], outer[2])
+        if len(children) != 3:
+            return False
+        if children[0][0] != 0x30 or children[1][0] != 0x30 or children[2][0] != 0x03:
+            return False
+        _first_oid_in_sequence(data, children[1])
+        return _sequence_contains_spki(data, children[0], 0)
+    except (IndexError, ValueError):
+        return False
+
+
+def _looks_like_binary_der_key(data: bytes) -> bool:
+    return (
+        _looks_like_spki_or_pkcs8(data)
+        or _looks_like_pkcs1_rsa(data)
+        or _looks_like_sec1_ec_private_key(data)
+        or _looks_like_x509_or_csr(data)
+    )
+
+
+def _encoded_key_candidates(data: bytes) -> Tuple[bytes, ...]:
+    compact = b"".join(data.split())
+    if len(compact) < 32 or len(compact) > _MAX_ENCODED_KEY_CANDIDATE_BYTES:
+        return ()
+    candidates = []
+    if len(compact) % 2 == 0 and _HEX_KEY_CANDIDATE.fullmatch(compact) is not None:
+        try:
+            candidates.append(bytes.fromhex(compact.decode("ascii")))
+        except (UnicodeDecodeError, ValueError):
+            pass
+    if len(compact) % 4 != 1 and _BASE64_KEY_CANDIDATE.fullmatch(compact) is not None:
+        padded = compact + b"=" * (-len(compact) % 4)
+        try:
+            candidates.append(base64.b64decode(padded, altchars=b"-_", validate=True))
+        except (ValueError, TypeError):
+            pass
+    return tuple(candidate for candidate in candidates if candidate)
+
+
+def _looks_like_encoded_der_key(data: bytes) -> bool:
+    return any(_looks_like_binary_der_key(candidate) for candidate in _encoded_key_candidates(data))
+
+
 def _looks_like_der_key(data: bytes) -> bool:
-    return _looks_like_spki_or_pkcs8(data) or _looks_like_pkcs1_rsa(data)
+    return _looks_like_binary_der_key(data.strip()) or _looks_like_encoded_der_key(data)
+
+
+def _looks_like_openssh_wire_key(data: bytes) -> bool:
+    if len(data) < 5:
+        return False
+    type_size = int.from_bytes(data[:4], "big")
+    if type_size < 3 or type_size > 64 or len(data) < 4 + type_size:
+        return False
+    return data[4 : 4 + type_size].lower() in _SSH_PUBLIC_KEY_TYPES
+
+
+def _looks_like_openssh_key(data: bytes) -> bool:
+    lowered = data.lower()
+    for token in lowered.split():
+        if token.strip(_SSH_TOKEN_EDGE_CHARS) in _SSH_PUBLIC_KEY_TYPES:
+            return True
+    if _looks_like_openssh_wire_key(data):
+        return True
+    return any(
+        _looks_like_openssh_wire_key(candidate)
+        for candidate in _encoded_key_candidates(data)
+    )
 
 
 def _looks_like_jwk(data: bytes) -> bool:
     stripped = data.strip()
+    if stripped.startswith(b"\xef\xbb\xbf"):
+        stripped = stripped[3:].strip()
     lowered = stripped.lower()
     if not stripped.startswith(b"{") or re.search(rb'"kty"\s*:', lowered) is None:
         return False
@@ -265,8 +415,7 @@ def validate_hmac_key(key: Any, algorithm: str, *, allow_weak_keys: bool = False
             KEY_CONFUSION,
             "PEM key or certificate material was supplied as an HMAC secret",
         )
-    stripped = material.strip()
-    if stripped.lower().startswith(_SSH_KEY_PREFIXES):
+    if _looks_like_openssh_key(material):
         raise JwtGuardError(
             KEY_CONFUSION,
             "OpenSSH public key material was supplied as an HMAC secret",

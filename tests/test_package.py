@@ -77,7 +77,16 @@ class WorkflowTests(unittest.TestCase):
 
 class DocumentationTests(unittest.TestCase):
     def test_required_documents_exist(self):
-        for relative in ("README.md", "SECURITY.md", "CONTRIBUTING.md", "LICENSE", "docs/good-first-issues.md"):
+        for relative in (
+            "README.md",
+            "SECURITY.md",
+            "CONTRIBUTING.md",
+            "LICENSE",
+            "docs/good-first-issues.md",
+            ".github/PULL_REQUEST_TEMPLATE.md",
+            ".github/ISSUE_TEMPLATE/bug_report.md",
+            ".github/ISSUE_TEMPLATE/feature_request.md",
+        ):
             self.assertTrue((ROOT / relative).is_file(), relative)
 
     def test_good_first_issues_has_fifteen_items(self):
